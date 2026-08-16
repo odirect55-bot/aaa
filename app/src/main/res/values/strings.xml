@@ -1,0 +1,128 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">WalkFit</string>
+
+    <!-- Navigation -->
+    <string name="nav_home">Home</string>
+    <string name="nav_history">History</string>
+    <string name="nav_goals">Goals</string>
+    <string name="nav_profile">Profile</string>
+
+    <!-- Dashboard -->
+    <string name="dashboard_today">Today</string>
+    <string name="unit_steps">steps</string>
+    <string name="dashboard_percent_complete">%1$d%% of goal</string>
+    <string name="dashboard_goal">Goal: %1$s steps</string>
+    <string name="dashboard_ring_description">%1$s steps, %2$d percent of a %3$s step goal</string>
+    <string name="dashboard_empty_hint">Your first steps will appear here as soon as the sensor reports them.</string>
+
+    <string name="stat_distance">Distance</string>
+    <string name="stat_calories">Calories</string>
+    <string name="stat_time">Time</string>
+    <string name="stat_current_streak">Current streak</string>
+    <string name="stat_best_streak">Best streak</string>
+    <string name="stat_daily_average">Daily average</string>
+    <string name="stat_goals_hit">Goals hit</string>
+    <string name="stat_total_steps">Total steps</string>
+    <string name="stat_total_distance">Total distance</string>
+    <string name="stat_days_tracked">Days tracked</string>
+    <string name="stat_best_day">Best day</string>
+
+    <string name="section_your_progress">Your progress</string>
+    <string name="section_walking_session">Walking session</string>
+    <string name="section_daily_records">Daily records</string>
+    <string name="section_walking_sessions">Walking sessions</string>
+
+    <string name="estimate_disclaimer">Distance and calories are estimates based on your profile, not measurements.</string>
+    <string name="accuracy_note">Steps come from your phone\'s hardware step counter. Counts can differ from other devices and are not medical-grade.</string>
+    <string name="privacy_note">All of your data stays on this device.</string>
+
+    <!-- Session -->
+    <string name="session_idle_hint">Start a session to track a single walk separately from your daily total.</string>
+    <string name="action_start_walking">Start walking</string>
+    <string name="action_pause">Pause</string>
+    <string name="action_resume">Resume</string>
+    <string name="action_finish">Finish</string>
+
+    <!-- Generic actions -->
+    <string name="action_save">Save</string>
+    <string name="action_dismiss">Dismiss</string>
+    <string name="action_open_settings">Open settings</string>
+    <string name="action_grant_permission">Grant permission</string>
+
+    <!-- Sensor / permission states -->
+    <string name="sensor_unsupported_title">Step counting is not supported on this device.</string>
+    <string name="sensor_unsupported_message">This phone has no hardware step counter, so WalkFit cannot measure your steps. It will not show estimated or made-up numbers instead. You can still set a goal and enter your profile, and tracking will start automatically if you move to a device that has the sensor.</string>
+    <string name="permission_required_title">Permission needed to count steps</string>
+    <string name="permission_required_message">Android requires the Physical activity permission before an app may read the step counter. WalkFit uses it only to count your steps on this device. Nothing is uploaded.</string>
+
+    <string name="sensor_status_title">Sensor status</string>
+    <string name="sensor_step_counter">Step counter</string>
+    <string name="sensor_step_detector">Step detector</string>
+    <string name="sensor_state_active">Active</string>
+    <string name="sensor_state_unsupported">Not available</string>
+    <string name="sensor_state_permission">Permission needed</string>
+    <string name="sensor_state_present">Present</string>
+    <string name="sensor_state_absent">Not present</string>
+
+    <!-- Notifications -->
+    <string name="channel_tracking_name">Step tracking</string>
+    <string name="channel_tracking_description">Ongoing notification shown while WalkFit counts your steps.</string>
+    <string name="channel_nudges_name">Goal reminders</string>
+    <string name="channel_nudges_description">Optional reminders about your daily step goal.</string>
+    <string name="notification_tracking_title">%1$s steps today</string>
+    <string name="notification_tracking_text">%1$d%% of your %2$s step goal</string>
+
+    <!-- History -->
+    <string name="history_yesterday">Yesterday</string>
+    <string name="history_steps_of_goal">%1$s / %2$s</string>
+    <string name="history_empty_title">No history yet</string>
+    <string name="history_empty_message">Once WalkFit has recorded a day of walking, your daily records and charts will appear here.</string>
+    <string name="sessions_empty_message">No walking sessions recorded yet.</string>
+    <string name="chart_daily_steps">Daily steps</string>
+    <string name="chart_weekly_steps">Weekly steps</string>
+    <string name="chart_monthly_steps">Monthly steps</string>
+
+    <!-- Goals -->
+    <string name="goals_current_title">Daily goal</string>
+    <string name="goals_current_value">%1$s steps</string>
+    <string name="goals_progress_summary">%1$s steps today · %2$d%%</string>
+    <string name="goals_choose_title">Choose a goal</string>
+    <string name="goals_custom_label">Custom goal</string>
+    <string name="goals_custom_hint">Any value between %1$s and %2$s steps.</string>
+    <string name="goals_achievements_title">Achievements</string>
+    <string name="value_days">%1$d days</string>
+
+    <!-- Profile -->
+    <string name="profile_title">Your profile</string>
+    <string name="profile_name">Name</string>
+    <string name="profile_age">Age</string>
+    <string name="profile_weight">Weight (kg)</string>
+    <string name="profile_height">Height (cm)</string>
+    <string name="profile_stride">Stride (cm)</string>
+    <string name="profile_sex_label">Used for the stride estimate</string>
+    <string name="profile_stride_estimated">Using an estimated stride of %1$d cm. Enter your own for a closer distance estimate.</string>
+    <string name="profile_stride_configured">Using your configured stride of %1$d cm.</string>
+    <string name="profile_lifetime_title">Lifetime</string>
+
+    <string name="sex_male">Male</string>
+    <string name="sex_female">Female</string>
+    <string name="sex_unspecified">Prefer not to say</string>
+
+    <!-- Settings -->
+    <string name="settings_title">Settings</string>
+    <string name="settings_background_tracking">Background tracking</string>
+    <string name="settings_background_tracking_description">Keep counting when WalkFit is closed. Uses batched sensor delivery to save battery.</string>
+    <string name="settings_notifications">Notifications</string>
+    <string name="settings_notifications_description">Goal reminders and celebrations.</string>
+    <string name="settings_morning_reminder">Morning reminder</string>
+    <string name="settings_near_goal">Almost-there reminder</string>
+    <string name="settings_goal_achieved">Goal reached celebration</string>
+    <string name="settings_theme">Theme</string>
+    <string name="settings_units">Distance units</string>
+    <string name="theme_system">System</string>
+    <string name="theme_light">Light</string>
+    <string name="theme_dark">Dark</string>
+    <string name="unit_kilometers">Kilometres</string>
+    <string name="unit_miles">Miles</string>
+</resources>

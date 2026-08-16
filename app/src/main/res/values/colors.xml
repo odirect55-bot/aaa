@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Matches the light Compose background so there is no flash at launch. -->
+    <color name="walkfit_background">#F7FBF7</color>
+    <color name="walkfit_primary">#2E7D57</color>
+    <color name="ic_launcher_background">#2E7D57</color>
+</resources>
