@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Back up the step history and profile (Android 11 and below).
+  The active-session scratch file is excluded: it is transient state tied to a
+  specific device's sensor counter and must not be restored elsewhere.
+-->
+<full-backup-content>
+    <include domain="database" path="walkfit.db" />
+    <exclude domain="sharedpref" path="walkfit_active_session.xml" />
+</full-backup-content>

@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      Launch theme only. Everything after the first frame is themed by Compose
+      (see ui/theme/Theme.kt), which supports light, dark and system modes.
+    -->
+    <style name="Theme.WalkFit" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowBackground">@color/walkfit_background</item>
+    </style>
+</resources>
