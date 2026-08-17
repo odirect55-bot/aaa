@@ -20,7 +20,7 @@ import { SettingRow, SwitchRow } from '../components/SettingRow';
 import { TimePicker } from '../components/TimePicker';
 import { ALARM_SOUNDS, getSoundName } from '../constants/sounds';
 import type { RootScreenProps } from '../navigation/types';
-import { previewSound, stopRinging } from '../services/alarmAudio';
+import { previewSound, stopPreview } from '../services/alarmAudio';
 import { useAlarmStore } from '../state/AlarmStore';
 import { useTheme } from '../theme/ThemeProvider';
 import type { AlarmDraft, SoundId, Weekday } from '../types/models';
@@ -84,7 +84,7 @@ export function AlarmEditScreen({ navigation, route }: RootScreenProps<'AlarmEdi
   const [error, setError] = useState<string | null>(null);
 
   // Never leave a preview tone playing behind you.
-  useEffect(() => () => void stopRinging(), []);
+  useEffect(() => stopPreview, []);
 
   useEffect(() => {
     navigation.setOptions({ title: isEditing ? 'Edit alarm' : 'New alarm' });
@@ -93,11 +93,14 @@ export function AlarmEditScreen({ navigation, route }: RootScreenProps<'AlarmEdi
   const validation = useMemo(() => validateDraft(draft), [draft]);
 
   const preview = useMemo(() => {
+    if (!draft.enabled) {
+      return 'Saved but switched off';
+    }
     const upcoming = nextOccurrences(draft, new Date(), 1)[0];
     if (!upcoming) {
       return null;
     }
-    return `Rings ${formatRelativeDay(upcoming).toLowerCase()} · ${formatCountdown(upcoming)}`;
+    return `${formatRelativeDay(upcoming).toLowerCase()} · ${formatCountdown(upcoming)}`;
   }, [draft]);
 
   const handleSave = useCallback(async () => {
@@ -113,10 +116,11 @@ export function AlarmEditScreen({ navigation, route }: RootScreenProps<'AlarmEdi
       } else {
         await addAlarm(draft);
       }
+      // Deliberately no `finally`: on success this screen unmounts, and
+      // clearing the flag afterwards would update a gone component.
       navigation.goBack();
     } catch (caught) {
       setError(describeError(caught));
-    } finally {
       setSaving(false);
     }
   }, [addAlarm, alarmId, draft, isEditing, navigation, updateAlarm, validation]);
@@ -157,7 +161,7 @@ export function AlarmEditScreen({ navigation, route }: RootScreenProps<'AlarmEdi
             <Text style={[styles.previewText, { color: palette.textSecondary }]}>
               {formatTime(draft.hour, draft.minute, settings.use24HourClock)}
               {settings.use24HourClock ? '' : ` ${formatMeridiem(draft.hour)}`}
-              {preview ? ` · ${preview.replace('Rings ', '')}` : ''}
+              {preview ? ` · ${preview}` : ''}
             </Text>
           </Card>
 
@@ -252,15 +256,14 @@ export function AlarmEditScreen({ navigation, route }: RootScreenProps<'AlarmEdi
         title="Alarm sound"
         options={SOUND_SHEET_OPTIONS}
         selected={draft.soundId}
+        // The sheet stays open on selection so tones can be compared; each tap
+        // auditions the tone it selects.
+        closeOnSelect={false}
         onHighlight={(soundId) => void previewSound(soundId)}
-        onSelect={(soundId) => {
-          setDraft((current) => ({ ...current, soundId }));
-          setSoundSheetVisible(false);
-          void stopRinging();
-        }}
+        onSelect={(soundId) => setDraft((current) => ({ ...current, soundId }))}
         onClose={() => {
           setSoundSheetVisible(false);
-          void stopRinging();
+          stopPreview();
         }}
       />
 

@@ -10,7 +10,7 @@ import { SegmentedControl } from '../components/SegmentedControl';
 import { SettingRow, SwitchRow } from '../components/SettingRow';
 import { ALARM_SOUNDS, getSoundName } from '../constants/sounds';
 import type { RootScreenProps } from '../navigation/types';
-import { previewSound, stopRinging } from '../services/alarmAudio';
+import { previewSound, stopPreview } from '../services/alarmAudio';
 import {
   openAppSettings,
   openBatteryOptimizationSettings,
@@ -57,7 +57,7 @@ export function SettingsScreen({ navigation }: RootScreenProps<'Settings'>) {
 
   useEffect(() => {
     void refreshPermission();
-    return () => void stopRinging();
+    return stopPreview;
   }, [refreshPermission]);
 
   const handleResync = useCallback(async () => {
@@ -246,15 +246,12 @@ export function SettingsScreen({ navigation }: RootScreenProps<'Settings'>) {
         title="Default alarm sound"
         options={SOUND_OPTIONS}
         selected={settings.defaultSoundId}
+        closeOnSelect={false}
         onHighlight={(soundId) => void previewSound(soundId)}
-        onSelect={(defaultSoundId) => {
-          void updateSettings({ defaultSoundId });
-          setSoundSheet(false);
-          void stopRinging();
-        }}
+        onSelect={(defaultSoundId) => void updateSettings({ defaultSoundId })}
         onClose={() => {
           setSoundSheet(false);
-          void stopRinging();
+          stopPreview();
         }}
       />
 

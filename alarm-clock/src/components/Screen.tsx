@@ -9,16 +9,14 @@ export function Screen({
   children,
   edges = ['top', 'left', 'right'],
   style,
-  background,
 }: {
   children: React.ReactNode;
   edges?: Edge[];
   style?: ViewStyle;
-  background?: string;
 }) {
   const { palette } = useTheme();
   return (
-    <View style={[styles.root, { backgroundColor: background ?? palette.background }]}>
+    <View style={[styles.root, { backgroundColor: palette.background }]}>
       <SafeAreaView edges={edges} style={[styles.root, style]}>
         {children}
       </SafeAreaView>

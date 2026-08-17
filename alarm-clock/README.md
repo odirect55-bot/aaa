@@ -30,7 +30,7 @@ your first alarm. On Android 13+ that permission is mandatory — nothing rings
 without it, and the alarm list says so if it is missing.
 
 ```bash
-npm test          # unit tests (67)
+npm test          # 131 unit, integration and UI tests
 npm run typecheck # tsc --noEmit
 ```
 
@@ -102,6 +102,12 @@ Run `npm run generate:assets` to rebuild them.
   repeating vibration pattern, the screen kept awake, hardware back blocked, and
   huge Snooze/Dismiss targets. It stops by itself after the configured window
   and records the alarm as missed.
+* **Both at once** — if the alarm arrives while the app is in the background,
+  the ringing screen mounts silently and only starts its own tone when the app
+  is actually brought forward, so it never plays on top of the notification
+  sound. An alarm with snooze switched off gets a Dismiss-only notification, and
+  a snooze request on it degrades to a dismissal rather than borrowing the
+  global default.
 
 ### After the fact
 
@@ -159,26 +165,44 @@ alarms are unaffected.
 
 ## Tests
 
-`npm test` runs 67 unit tests (Jest + `jest-expo`, pinned to a DST-observing
-time zone by `test/globalSetup.ts`):
+`npm test` runs 131 tests (Jest + `jest-expo` + React Native Testing Library),
+pinned to a DST-observing time zone by `test/globalSetup.ts`. Two fakes stand in
+for the platform: `test/fakeNotifications.ts` behaves like the OS scheduler
+(identifiers are keys, the pending list can be read back, notifications can be
+fired and responded to) and `test/fakeAudio.ts` records playback.
 
-* **`utils/time`** — occurrence maths across "later today", rollover, exact-now,
-  repeat-day walks, both DST transitions, next-alarm selection and all formatting.
+* **`utils/time`** — occurrence maths across "later today", rollover,
+  exact-now, repeat-day walks, both DST transitions, next-alarm selection and
+  all formatting.
 * **`utils/validation`** — draft validation and normalisation, plus recovery of
   damaged stored records.
-* **`services/notifications/scheduler`** — identifier round-trips, planning,
-  the schedule diff, and `syncSchedule` driven against an in-memory fake of the
-  OS scheduler (`test/fakeNotifications.ts`): repeated syncs stay idempotent, a
-  disabled alarm is fully cancelled, an edit leaves no notification at the old
-  time, snoozes survive a sync, failures are reported rather than thrown, and
-  missed/one-shot reconciliation behaves.
+* **`services/notifications/scheduler`** — identifier round-trips, planning, the
+  schedule diff, and `syncSchedule` against the fake OS: repeated syncs stay
+  idempotent, a disabled alarm is fully cancelled, an edit leaves nothing at the
+  old time, snoozes survive a sync, failures are reported rather than thrown.
+* **`services/alarmAudio`** — looping vs. preview playback, and the rule that a
+  preview can never silence a ringing alarm.
+* **`state/AlarmStore`** — every feature driven through the same API the screens
+  use: create, edit, delete, enable/disable, repeat windows, snooze (including
+  chained snoozes and snooze-disabled alarms), dismiss, missed alarms, cold
+  start from a notification tap, restart/reboot recovery, corrupt storage,
+  time-zone changes, settings, and error handling.
+* **`theme/ThemeProvider`** — light, dark and system resolution, and that both
+  palettes define the same tokens.
+* **`App`** — the whole app mounted: empty state, creating an alarm through the
+  editor, toggling and deleting from the list, the permission banner, and the
+  ringing screen taking over and going away again.
 
 ## What is not covered here
 
 The Gradle build and on-device behaviour were not run in the environment this
-was developed in (no Android SDK available), so the native build has been
-verified only as far as `expo prebuild` — the generated manifest carries the
-expected permissions and `res/raw` carries the five tones — plus a clean Metro
-production bundle for Android. Ringing behaviour should be smoke-tested on a
-physical device, which is also the only place notification channels, exact
-alarms and Doze behave realistically.
+was developed in (no Android SDK available), so the native side has been
+verified as far as `expo prebuild` — the generated manifest carries the expected
+permissions and `res/raw` carries the five tones — plus a clean Metro production
+bundle for Android and a clean `tsc`. Everything above the native boundary is
+covered by the test suite against fakes of the notification and audio modules.
+
+What still needs a physical device: the actual sound coming out of the alarm
+stream at alarm volume, exact-alarm delivery under Doze, the lock-screen
+appearance of the notification, and reboot rescheduling. Those depend on OEM
+behaviour that no fake can stand in for.

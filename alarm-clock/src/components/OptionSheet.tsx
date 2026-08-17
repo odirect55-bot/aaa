@@ -3,6 +3,7 @@ import { Animated, Modal, Pressable, ScrollView, StyleSheet, Text, View } from '
 
 import { useTheme } from '../theme/ThemeProvider';
 import { MIN_TOUCH_TARGET } from '../theme/tokens';
+import { AppButton } from './AppButton';
 
 export interface SheetOption<T> {
   value: T;
@@ -22,6 +23,7 @@ export function OptionSheet<T extends string | number>({
   onSelect,
   onClose,
   onHighlight,
+  closeOnSelect = true,
 }: {
   visible: boolean;
   title: string;
@@ -31,6 +33,11 @@ export function OptionSheet<T extends string | number>({
   onClose: () => void;
   /** Fired when an option is chosen, before closing — used to preview sounds. */
   onHighlight?: (value: T) => void;
+  /**
+   * When `false` the sheet stays open after a choice, so options can be
+   * compared before committing (the sound picker auditions each tone).
+   */
+  closeOnSelect?: boolean;
 }) {
   const { palette, radius, spacing } = useTheme();
   const translateY = useRef(new Animated.Value(40)).current;
@@ -81,6 +88,9 @@ export function OptionSheet<T extends string | number>({
                 onPress={() => {
                   onHighlight?.(option.value);
                   onSelect(option.value);
+                  if (closeOnSelect) {
+                    onClose();
+                  }
                 }}
                 style={({ pressed }) => [
                   styles.option,
@@ -116,6 +126,9 @@ export function OptionSheet<T extends string | number>({
             );
           })}
         </ScrollView>
+        {closeOnSelect ? null : (
+          <AppButton label="Done" onPress={onClose} size="large" fullWidth style={styles.done} />
+        )}
       </Animated.View>
     </Modal>
   );
@@ -148,4 +161,5 @@ const styles = StyleSheet.create({
   optionLabel: { fontSize: 16, fontWeight: '600' },
   optionDescription: { fontSize: 13 },
   check: { fontSize: 18, fontWeight: '700' },
+  done: { marginTop: 12 },
 });

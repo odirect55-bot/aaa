@@ -1,6 +1,6 @@
 import { StatusBar } from 'expo-status-bar';
 import React from 'react';
-import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { SafeAreaProvider, initialWindowMetrics } from 'react-native-safe-area-context';
 
 import { ErrorBoundary } from './src/components/ErrorBoundary';
 import { RootNavigator } from './src/navigation/RootNavigator';
@@ -26,7 +26,8 @@ function StatusBarForTheme() {
 export default function App() {
   return (
     <ErrorBoundary>
-      <SafeAreaProvider>
+      {/* Seeding the metrics avoids a blank first frame on cold start. */}
+      <SafeAreaProvider initialMetrics={initialWindowMetrics}>
         <AlarmStoreProvider>
           <ThemedApp />
         </AlarmStoreProvider>

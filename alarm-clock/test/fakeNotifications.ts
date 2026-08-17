@@ -14,6 +14,17 @@ interface ScheduledRequest {
   trigger: Record<string, unknown>;
 }
 
+type Listener<T> = (event: T) => void;
+
+export interface FakeNotification {
+  date: number;
+  request: {
+    identifier: string;
+    content: { title?: string | null; body?: string | null; data?: unknown };
+    trigger: Record<string, unknown>;
+  };
+}
+
 export const fakeState = {
   scheduled: new Map<string, ScheduledRequest>(),
   channels: new Map<string, Record<string, unknown>>(),
@@ -23,6 +34,15 @@ export const fakeState = {
   scheduleCalls: 0,
   cancelCalls: 0,
   scheduleShouldFail: false,
+  receivedListeners: new Set<Listener<FakeNotification>>(),
+  responseListeners: new Set<Listener<unknown>>(),
+  lastResponse: null as unknown,
+  permissions: {
+    granted: true,
+    canAskAgain: true,
+    status: 'granted' as string,
+  },
+  permissionRequests: 0,
 };
 
 export function __reset(): void {
@@ -34,6 +54,48 @@ export function __reset(): void {
   fakeState.scheduleCalls = 0;
   fakeState.cancelCalls = 0;
   fakeState.scheduleShouldFail = false;
+  fakeState.receivedListeners.clear();
+  fakeState.responseListeners.clear();
+  fakeState.lastResponse = null;
+  fakeState.permissions = { granted: true, canAskAgain: true, status: 'granted' };
+  fakeState.permissionRequests = 0;
+}
+
+/**
+ * Simulates the OS firing a scheduled notification: it leaves the pending
+ * list, is presented in the shade, and running listeners are told about it.
+ */
+export function __fire(identifier: string): FakeNotification {
+  const request = fakeState.scheduled.get(identifier);
+  if (!request) {
+    throw new Error(`No scheduled notification with identifier ${identifier}`);
+  }
+  fakeState.scheduled.delete(identifier);
+
+  const notification: FakeNotification = { date: Date.now(), request };
+  fakeState.presented.push({
+    request: { identifier, content: request.content as { data?: unknown } },
+  });
+  fakeState.receivedListeners.forEach((listener) => listener(notification));
+  return notification;
+}
+
+/** Simulates the user interacting with a delivered notification. */
+export function __respond(
+  notification: FakeNotification,
+  actionIdentifier: string = DEFAULT_ACTION_IDENTIFIER
+): void {
+  const response = { notification, actionIdentifier };
+  fakeState.lastResponse = response;
+  fakeState.responseListeners.forEach((listener) => listener(response));
+}
+
+/**
+ * Queues a response as if the app had been launched by a notification tap
+ * while it was not running.
+ */
+export function __setColdStartResponse(response: unknown): void {
+  fakeState.lastResponse = response;
 }
 
 export const SchedulableTriggerInputTypes = {
@@ -149,19 +211,38 @@ export async function dismissNotificationAsync(identifier: string): Promise<void
 }
 
 export function setNotificationHandler(): void {}
-export function addNotificationReceivedListener() {
-  return { remove() {} };
+
+export function addNotificationReceivedListener(listener: Listener<FakeNotification>) {
+  fakeState.receivedListeners.add(listener);
+  return {
+    remove() {
+      fakeState.receivedListeners.delete(listener);
+    },
+  };
 }
-export function addNotificationResponseReceivedListener() {
-  return { remove() {} };
+
+export function addNotificationResponseReceivedListener(listener: Listener<unknown>) {
+  fakeState.responseListeners.add(listener);
+  return {
+    remove() {
+      fakeState.responseListeners.delete(listener);
+    },
+  };
 }
+
 export function getLastNotificationResponse() {
-  return null;
+  return fakeState.lastResponse;
 }
-export function clearLastNotificationResponse(): void {}
+
+export function clearLastNotificationResponse(): void {
+  fakeState.lastResponse = null;
+}
+
 export async function getPermissionsAsync() {
-  return { granted: true, canAskAgain: true, status: 'granted', expires: 'never' };
+  return { ...fakeState.permissions, expires: 'never' };
 }
+
 export async function requestPermissionsAsync() {
-  return { granted: true, canAskAgain: true, status: 'granted', expires: 'never' };
+  fakeState.permissionRequests += 1;
+  return { ...fakeState.permissions, expires: 'never' };
 }

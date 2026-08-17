@@ -125,12 +125,18 @@ export const storage = {
     if (!Array.isArray(raw)) {
       return [];
     }
-    return raw.filter(
-      (entry): entry is ScheduledOccurrence =>
-        typeof entry?.notificationId === 'string' &&
-        typeof entry?.alarmId === 'string' &&
-        typeof entry?.firesAt === 'number'
-    );
+    return raw
+      .filter(
+        (entry): entry is ScheduledOccurrence =>
+          typeof entry?.notificationId === 'string' &&
+          typeof entry?.alarmId === 'string' &&
+          typeof entry?.firesAt === 'number'
+      )
+      .map((entry) => ({
+        ...entry,
+        // A missing kind would make a one-shot alarm fail to switch itself off.
+        kind: entry.kind === 'snooze' ? 'snooze' : 'alarm',
+      }));
   },
 
   async saveSchedule(schedule: ScheduledOccurrence[]): Promise<void> {

@@ -31,6 +31,10 @@ export function AlarmCard({
   const time = formatTime(alarm.hour, alarm.minute, use24HourClock);
   const meridiem = use24HourClock ? null : formatMeridiem(alarm.hour);
 
+  // One canonical spoken name for the alarm, reused by the card and its switch
+  // so a screen reader announces them distinctly rather than twice over.
+  const spokenName = `${alarm.label.trim() || 'Alarm'} at ${time}${meridiem ? ` ${meridiem}` : ''}`;
+
   const metadata = [
     formatRepeatDays(alarm.repeatDays),
     getSoundName(alarm.soundId),
@@ -46,7 +50,7 @@ export function AlarmCard({
     <Animated.View style={{ transform: [{ scale }] }}>
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel={`${alarm.label || 'Alarm'} at ${time}${meridiem ? ` ${meridiem}` : ''}, ${formatRepeatDays(alarm.repeatDays)}`}
+        accessibilityLabel={`${spokenName}, ${formatRepeatDays(alarm.repeatDays)}`}
         accessibilityHint="Opens the alarm for editing. Long press to delete."
         onPress={onPress}
         onLongPress={onLongPress}
@@ -92,8 +96,10 @@ export function AlarmCard({
           </View>
 
           <Switch
-            accessibilityLabel={`${alarm.label || 'Alarm'} at ${time}`}
+            accessibilityLabel={`Enable ${spokenName}`}
             accessibilityHint={alarm.enabled ? 'Turns this alarm off' : 'Turns this alarm on'}
+            accessibilityRole="switch"
+            accessibilityState={{ checked: alarm.enabled }}
             value={alarm.enabled}
             onValueChange={onToggle}
             trackColor={{ false: palette.switchTrackOff, true: palette.primary }}

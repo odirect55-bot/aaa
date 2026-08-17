@@ -12,6 +12,7 @@ import { AppState, type AppStateStatus } from 'react-native';
 
 import {
   cancelAlarm,
+  cancelAlarmOccurrences,
   cancelAllOwned,
   cancelSnoozes,
   dismissDeliveredFor,
@@ -91,6 +92,36 @@ export function AlarmStoreProvider({ children }: { children: React.ReactNode }) 
   const [ringing, setRinging] = useState<RingingState | null>(null);
   const [lastSyncError, setLastSyncError] = useState<string | null>(null);
 
+  /**
+   * Scheduling work outlives the render cycle: a sync started by the last
+   * interaction can still be in flight when the provider unmounts. These
+   * wrappers drop the resulting state updates instead of warning about
+   * updating an unmounted component.
+   */
+  const mounted = useRef(true);
+  useEffect(
+    () => () => {
+      mounted.current = false;
+    },
+    []
+  );
+
+  const safely =
+    <T,>(setter: React.Dispatch<React.SetStateAction<T>>) =>
+    (value: React.SetStateAction<T>) => {
+      if (mounted.current) {
+        setter(value);
+      }
+    };
+
+  const setAlarmsSafely = safely(setAlarms);
+  const setHistorySafely = safely(setHistory);
+  const setSettingsSafely = safely(setSettings);
+  const setPermissionSafely = safely(setPermission);
+  const setRingingSafely = safely(setRinging);
+  const setLastSyncErrorSafely = safely(setLastSyncError);
+  const setReadySafely = safely(setReady);
+
   // Listeners and the sync queue run outside React's render cycle, so the
   // latest values are mirrored into refs to avoid stale closures.
   const alarmsRef = useRef<Alarm[]>([]);
@@ -113,7 +144,7 @@ export function AlarmStoreProvider({ children }: { children: React.ReactNode }) 
   const persistHistory = useCallback(async (entries: HistoryEntry[]) => {
     const trimmed = entries.slice(0, HISTORY_LIMIT);
     historyRef.current = trimmed;
-    setHistory(trimmed);
+    setHistorySafely(trimmed);
     await storage.saveHistory(trimmed);
   }, []);
 
@@ -130,7 +161,7 @@ export function AlarmStoreProvider({ children }: { children: React.ReactNode }) 
 
   const persistAlarms = useCallback(async (next: Alarm[]) => {
     alarmsRef.current = next;
-    setAlarms(next);
+    setAlarmsSafely(next);
     await storage.saveAlarms(next);
   }, []);
 
@@ -145,14 +176,14 @@ export function AlarmStoreProvider({ children }: { children: React.ReactNode }) 
       const result = await syncSchedule(alarmsRef.current, settingsRef.current, snoozes);
       scheduleRef.current = result.occurrences;
       await storage.saveSchedule(result.occurrences);
-      setLastSyncError(
+      setLastSyncErrorSafely(
         result.failed > 0
           ? `${result.failed} alarm${result.failed === 1 ? '' : 's'} could not be scheduled. Check notification permissions.`
           : null
       );
     } catch (error) {
       logger.error('store', error);
-      setLastSyncError('Could not update scheduled alarms.');
+      setLastSyncErrorSafely('Could not update scheduled alarms.');
     }
   }, []);
 
@@ -188,7 +219,17 @@ export function AlarmStoreProvider({ children }: { children: React.ReactNode }) 
       logger.warn('store', `Notification for unknown alarm ${payload.alarmId}`);
       return;
     }
-    setRinging({ alarm, firesAt: payload.firesAt, kind: payload.kind });
+    // Tapping a stale notification left in the shade must not restart an alarm
+    // the user already dealt with.
+    const alreadyHandled = historyRef.current.some(
+      (entry) => entry.alarmId === payload.alarmId && entry.scheduledFor === payload.firesAt
+    );
+    if (alreadyHandled) {
+      logger.info('store', `Ignoring notification for handled occurrence ${payload.firesAt}`);
+      void dismissDeliveredFor(payload.alarmId);
+      return;
+    }
+    setRingingSafely({ alarm, firesAt: payload.firesAt, kind: payload.kind });
   }, []);
 
   const finishRinging = useCallback(
@@ -206,9 +247,16 @@ export function AlarmStoreProvider({ children }: { children: React.ReactNode }) 
         action,
       });
       await dismissDeliveredFor(payload.alarmId);
-      setRinging((current) => (current?.alarm.id === payload.alarmId ? null : current));
+      setRingingSafely((current) => (current?.alarm.id === payload.alarmId ? null : current));
     },
     [recordHistory]
+  );
+
+  // `snoozeAlarm` falls back to dismissing when snooze is switched off, and
+  // `dismissAlarm` is declared below it; a ref breaks the cycle without
+  // reordering the two callbacks.
+  const dismissAlarmRef = useRef<(payload: AlarmNotificationPayload) => Promise<void>>(
+    async () => undefined
   );
 
   /** Snooze from either the ringing screen or the notification action. */
@@ -218,25 +266,31 @@ export function AlarmStoreProvider({ children }: { children: React.ReactNode }) 
       if (!alarm) {
         return;
       }
-      const minutes = alarm.snoozeMinutes > 0 ? alarm.snoozeMinutes : settingsRef.current.defaultSnoozeMinutes;
+      // `snoozeMinutes === 0` means the user turned snooze off for this alarm,
+      // so a snooze request degrades to a dismissal rather than quietly
+      // borrowing the global default.
+      const minutes = alarm.snoozeMinutes;
       if (minutes <= 0) {
-        await finishRinging(payload, 'dismissed');
+        await dismissAlarmRef.current(payload);
         return;
       }
 
-      await enqueue(async () => {
+      const snoozed = await enqueue(async () => {
         // Only one snooze may be pending per alarm.
         await cancelSnoozes(alarm.id);
         const occurrence = await scheduleSnooze(alarm, settingsRef.current, minutes);
-        if (occurrence) {
-          scheduleRef.current = [...scheduleRef.current, occurrence];
-          await storage.saveSchedule(scheduleRef.current);
-        } else {
-          setLastSyncError('Could not schedule the snooze.');
+        if (!occurrence) {
+          setLastSyncErrorSafely('Could not schedule the snooze.');
+          return false;
         }
+        scheduleRef.current = [...scheduleRef.current, occurrence];
+        await storage.saveSchedule(scheduleRef.current);
+        return true;
       });
 
-      await finishRinging(payload, 'snoozed');
+      // If the snooze could not be scheduled, nothing is going to ring again —
+      // record what actually happened rather than a snooze that does not exist.
+      await finishRinging(payload, snoozed ? 'snoozed' : 'dismissed');
     },
     [enqueue, finishRinging]
   );
@@ -266,6 +320,8 @@ export function AlarmStoreProvider({ children }: { children: React.ReactNode }) 
     },
     [enqueue, finishRinging, persistAlarms, runSync]
   );
+
+  dismissAlarmRef.current = dismissAlarm;
 
   const handleResponse = useCallback(
     async (response: Notifications.NotificationResponse) => {
@@ -313,13 +369,13 @@ export function AlarmStoreProvider({ children }: { children: React.ReactNode }) 
         historyRef.current = storedHistory;
         scheduleRef.current = storedSchedule;
 
-        setAlarms(storedAlarms);
-        setSettings(storedSettings);
-        setHistory(storedHistory);
+        setAlarmsSafely(storedAlarms);
+        setSettingsSafely(storedSettings);
+        setHistorySafely(storedHistory);
 
         const state = await getPermissionState();
         if (!cancelled) {
-          setPermission(state);
+          setPermissionSafely(state);
         }
 
         await reconcile();
@@ -336,7 +392,7 @@ export function AlarmStoreProvider({ children }: { children: React.ReactNode }) 
         logger.error('store', error);
       } finally {
         if (!cancelled) {
-          setReady(true);
+          setReadySafely(true);
         }
       }
     })();
@@ -386,7 +442,7 @@ export function AlarmStoreProvider({ children }: { children: React.ReactNode }) 
         await reconcile();
         await runSync();
       });
-      void getPermissionState().then(setPermission);
+      void getPermissionState().then(setPermissionSafely);
     };
 
     const subscription = AppState.addEventListener('change', onChange);
@@ -425,9 +481,9 @@ export function AlarmStoreProvider({ children }: { children: React.ReactNode }) 
       // rather than with a cold dialog on first launch.
       const current = await getPermissionState();
       if (!current.granted && current.canAskAgain) {
-        setPermission(await requestNotificationPermission());
+        setPermissionSafely(await requestNotificationPermission());
       } else {
-        setPermission(current);
+        setPermissionSafely(current);
       }
 
       const now = Date.now();
@@ -465,7 +521,7 @@ export function AlarmStoreProvider({ children }: { children: React.ReactNode }) 
   const deleteAlarm = useCallback(
     async (id: string): Promise<void> => {
       await persistAlarms(alarmsRef.current.filter((alarm) => alarm.id !== id));
-      setRinging((current) => (current?.alarm.id === id ? null : current));
+      setRingingSafely((current) => (current?.alarm.id === id ? null : current));
       await enqueue(async () => {
         await cancelAlarm(id);
         scheduleRef.current = scheduleRef.current.filter((item) => item.alarmId !== id);
@@ -496,7 +552,7 @@ export function AlarmStoreProvider({ children }: { children: React.ReactNode }) 
     async (patch: Partial<Settings>): Promise<void> => {
       const next = { ...settingsRef.current, ...patch };
       settingsRef.current = next;
-      setSettings(next);
+      setSettingsSafely(next);
       await storage.saveSettings(next);
 
       // The clock format is baked into the notification text, so pending
@@ -504,7 +560,7 @@ export function AlarmStoreProvider({ children }: { children: React.ReactNode }) 
       if (patch.use24HourClock !== undefined) {
         await enqueue(async () => {
           for (const alarm of alarmsRef.current) {
-            await cancelAlarm(alarm.id);
+            await cancelAlarmOccurrences(alarm.id);
           }
           scheduleRef.current = scheduleRef.current.filter((item) => item.kind === 'snooze');
           await runSync();
@@ -516,7 +572,7 @@ export function AlarmStoreProvider({ children }: { children: React.ReactNode }) 
 
   const requestPermission = useCallback(async (): Promise<PermissionState> => {
     const state = await requestNotificationPermission();
-    setPermission(state);
+    setPermissionSafely(state);
     if (state.granted) {
       await enqueue(runSync);
     }
@@ -524,7 +580,7 @@ export function AlarmStoreProvider({ children }: { children: React.ReactNode }) 
   }, [enqueue, runSync]);
 
   const refreshPermission = useCallback(async () => {
-    setPermission(await getPermissionState());
+    setPermissionSafely(await getPermissionState());
   }, []);
 
   const snoozeRinging = useCallback(async () => {
@@ -566,11 +622,11 @@ export function AlarmStoreProvider({ children }: { children: React.ReactNode }) 
       settingsRef.current = { ...DEFAULT_SETTINGS };
       scheduleRef.current = [];
 
-      setAlarms([]);
-      setHistory([]);
-      setSettings({ ...DEFAULT_SETTINGS });
-      setRinging(null);
-      setLastSyncError(null);
+      setAlarmsSafely([]);
+      setHistorySafely([]);
+      setSettingsSafely({ ...DEFAULT_SETTINGS });
+      setRingingSafely(null);
+      setLastSyncErrorSafely(null);
     });
   }, [enqueue]);
 

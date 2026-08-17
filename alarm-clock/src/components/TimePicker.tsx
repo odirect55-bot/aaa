@@ -45,6 +45,18 @@ function Wheel({ values, selectedIndex, onSelect, accessibilityLabel, width = 92
     scrollRef.current?.scrollTo({ y: selectedIndex * ITEM_HEIGHT, animated: true });
   }, [selectedIndex]);
 
+  // `contentOffset` positions the wheel on first paint, but on Android the
+  // offset can be applied before the content has been measured; re-applying it
+  // once the size is known makes the initial position reliable.
+  const alignedOnce = useRef(false);
+  const handleContentSizeChange = useCallback(() => {
+    if (alignedOnce.current) {
+      return;
+    }
+    alignedOnce.current = true;
+    scrollRef.current?.scrollTo({ y: lastReported.current * ITEM_HEIGHT, animated: false });
+  }, []);
+
   const handleSettle = useCallback(
     (event: NativeSyntheticEvent<NativeScrollEvent>) => {
       const index = Math.round(event.nativeEvent.contentOffset.y / ITEM_HEIGHT);
@@ -73,6 +85,7 @@ function Wheel({ values, selectedIndex, onSelect, accessibilityLabel, width = 92
         scrollEventThrottle={16}
         onMomentumScrollEnd={handleSettle}
         onScrollEndDrag={handleSettle}
+        onContentSizeChange={handleContentSizeChange}
       >
         {values.map((label, index) => {
           const distance = Animated.subtract(scrollY, index * ITEM_HEIGHT);

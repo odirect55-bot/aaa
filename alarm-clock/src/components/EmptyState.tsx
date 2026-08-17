@@ -21,10 +21,13 @@ export function EmptyState({
   const rise = useRef(new Animated.Value(16)).current;
 
   useEffect(() => {
-    Animated.parallel([
+    const animation = Animated.parallel([
       Animated.timing(fade, { toValue: 1, duration: 320, useNativeDriver: true }),
       Animated.spring(rise, { toValue: 0, useNativeDriver: true, speed: 12, bounciness: 4 }),
-    ]).start();
+    ]);
+    animation.start();
+    // Stop on unmount so a half-finished entrance cannot keep driving frames.
+    return () => animation.stop();
   }, [fade, rise]);
 
   return (

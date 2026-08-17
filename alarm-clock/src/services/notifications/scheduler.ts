@@ -120,8 +120,8 @@ export function planAll(
 /**
  * Pure: what to add and what to remove, given what the OS currently holds.
  *
- * Snoozes are ad-hoc and never part of a plan, so they survive a sync unless
- * their alarm no longer exists or has been switched off.
+ * Snoozes are ad-hoc and never part of a plan, so they survive a sync as long
+ * as the alarm they belong to still exists.
  */
 export function diffSchedule(
   planned: PlannedNotification[],
@@ -244,7 +244,8 @@ function buildContent({
   return {
     title,
     body,
-    categoryIdentifier: ALARM_CATEGORY_ID,
+    // An alarm that cannot be snoozed must not show a Snooze button.
+    categoryIdentifier: alarm.snoozeMinutes > 0 ? ALARM_CATEGORY_ID : ALARM_CATEGORY_ID_NO_SNOOZE,
     priority: Notifications.AndroidNotificationPriority.MAX,
     color: '#6C5CE7',
     // Android 8+ takes the sound from the channel; this covers older devices
@@ -266,9 +267,23 @@ function buildContent({
 }
 
 export const ALARM_CATEGORY_ID = 'alarm-ringing';
+export const ALARM_CATEGORY_ID_NO_SNOOZE = 'alarm-ringing-no-snooze';
+
+const DISMISS_ACTION: Notifications.NotificationAction = {
+  identifier: 'dismiss',
+  buttonTitle: 'Dismiss',
+  options: { opensAppToForeground: true, isDestructive: true },
+};
+
+const SNOOZE_ACTION: Notifications.NotificationAction = {
+  identifier: 'snooze',
+  buttonTitle: 'Snooze',
+  options: { opensAppToForeground: true },
+};
 
 /**
- * Registers the Snooze / Dismiss buttons shown on the notification.
+ * Registers the buttons shown on the notification: one category with Snooze,
+ * one without, so an alarm with snooze turned off does not offer it.
  *
  * Both actions foreground the app on purpose: acting on an alarm has to run
  * JavaScript (schedule the snooze, write history, stop the sound), and Android
@@ -277,16 +292,11 @@ export const ALARM_CATEGORY_ID = 'alarm-ringing';
 export async function ensureNotificationCategory(): Promise<void> {
   try {
     await Notifications.setNotificationCategoryAsync(ALARM_CATEGORY_ID, [
-      {
-        identifier: 'snooze',
-        buttonTitle: 'Snooze',
-        options: { opensAppToForeground: true },
-      },
-      {
-        identifier: 'dismiss',
-        buttonTitle: 'Dismiss',
-        options: { opensAppToForeground: true, isDestructive: true },
-      },
+      SNOOZE_ACTION,
+      DISMISS_ACTION,
+    ]);
+    await Notifications.setNotificationCategoryAsync(ALARM_CATEGORY_ID_NO_SNOOZE, [
+      DISMISS_ACTION,
     ]);
   } catch (error) {
     logger.error('scheduler', error);
@@ -349,13 +359,23 @@ export async function syncSchedule(
   // Re-read the channels first: they may have been deleted from the system
   // settings since the last pass, and each alarm needs its own back.
   await refreshChannelCache();
-  const liveAlarmIds = new Set(alarms.filter((alarm) => alarm.enabled).map((alarm) => alarm.id));
+
+  // Every alarm that still exists keeps its pending snooze, *including*
+  // disabled ones: a one-shot alarm switches itself off the moment it fires,
+  // and its snooze has to outlive that. Cancelling a snooze is always an
+  // explicit act — turning the alarm off by hand, editing it or deleting it —
+  // and those paths call `cancelAlarm` directly.
+  const liveAlarmIds = new Set(alarms.map((alarm) => alarm.id));
 
   let existingIdentifiers: string[] = [];
+  let readOsSchedule = true;
   try {
     const existing = await Notifications.getAllScheduledNotificationsAsync();
     existingIdentifiers = existing.map((request) => request.identifier);
   } catch (error) {
+    // Without the OS list the diff degrades to "schedule everything"; that is
+    // safe because identifiers are deterministic, so nothing is duplicated.
+    readOsSchedule = false;
     logger.error('scheduler', error);
   }
 
@@ -403,14 +423,18 @@ export async function syncSchedule(
   // the caller passed it in — that guards against double-counting.
   const stillScheduled = new Set(existingIdentifiers);
   for (const snooze of existingSnoozes) {
-    if (
-      snooze.kind === 'snooze' &&
-      stillScheduled.has(snooze.notificationId) &&
-      !cancelledSet.has(snooze.notificationId) &&
-      snooze.firesAt > now.getTime()
-    ) {
-      occurrences.push(snooze);
+    if (snooze.kind !== 'snooze' || snooze.firesAt <= now.getTime()) {
+      continue;
     }
+    if (cancelledSet.has(snooze.notificationId)) {
+      continue;
+    }
+    // When the OS list could not be read, trust the stored record rather than
+    // forgetting a snooze the system is still holding.
+    if (readOsSchedule && !stillScheduled.has(snooze.notificationId)) {
+      continue;
+    }
+    occurrences.push(snooze);
   }
 
   const channelsInUse = new Set(
@@ -439,50 +463,48 @@ export async function scheduleSnooze(
   return scheduleOne({ alarm, settings, firesAt, kind: 'snooze' }, identifier);
 }
 
-/** Cancels everything scheduled for one alarm (used on delete/disable). */
+/** Cancels everything scheduled for one alarm (used on delete/disable/edit). */
 export async function cancelAlarm(alarmId: string): Promise<number> {
+  return cancelMatching(
+    (identifier) => isOwnedIdentifier(identifier) && alarmIdFromIdentifier(identifier) === alarmId
+  );
+}
+
+/**
+ * Cancels an alarm's scheduled occurrences but leaves a pending snooze alone.
+ *
+ * Used when the notification *text* has to be rebuilt (the clock format
+ * changed) rather than the alarm itself: the snooze the user is relying on
+ * should not disappear because of a display preference.
+ */
+export async function cancelAlarmOccurrences(alarmId: string): Promise<number> {
+  return cancelMatching(
+    (identifier) =>
+      identifier.startsWith(ALARM_PREFIX) && alarmIdFromIdentifier(identifier) === alarmId
+  );
+}
+
+async function cancelMatching(predicate: (identifier: string) => boolean): Promise<number> {
   try {
     const existing = await Notifications.getAllScheduledNotificationsAsync();
-    const identifiers = existing
-      .map((request) => request.identifier)
-      .filter(
-        (identifier) => isOwnedIdentifier(identifier) && alarmIdFromIdentifier(identifier) === alarmId
-      );
-    return await cancelMany(identifiers);
+    return await cancelMany(existing.map((request) => request.identifier).filter(predicate));
   } catch (error) {
     logger.error('scheduler', error);
     return 0;
   }
 }
 
-/** Cancels every notification this app owns (used by "reset all data"). */
+/** Cancels every notification this app owns (used by "erase all data"). */
 export async function cancelAllOwned(): Promise<number> {
-  try {
-    const existing = await Notifications.getAllScheduledNotificationsAsync();
-    return await cancelMany(
-      existing.map((request) => request.identifier).filter(isOwnedIdentifier)
-    );
-  } catch (error) {
-    logger.error('scheduler', error);
-    return 0;
-  }
+  return cancelMatching(isOwnedIdentifier);
 }
 
 /** Cancels pending snoozes for one alarm without touching its main schedule. */
 export async function cancelSnoozes(alarmId: string): Promise<number> {
-  try {
-    const existing = await Notifications.getAllScheduledNotificationsAsync();
-    const identifiers = existing
-      .map((request) => request.identifier)
-      .filter(
-        (identifier) =>
-          identifier.startsWith(SNOOZE_PREFIX) && alarmIdFromIdentifier(identifier) === alarmId
-      );
-    return await cancelMany(identifiers);
-  } catch (error) {
-    logger.error('scheduler', error);
-    return 0;
-  }
+  return cancelMatching(
+    (identifier) =>
+      identifier.startsWith(SNOOZE_PREFIX) && alarmIdFromIdentifier(identifier) === alarmId
+  );
 }
 
 /** Clears the notification an alarm left in the shade once it is handled. */

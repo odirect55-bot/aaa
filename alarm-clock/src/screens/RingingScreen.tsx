@@ -1,7 +1,16 @@
 import { useKeepAwake } from 'expo-keep-awake';
 import { StatusBar } from 'expo-status-bar';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Animated, BackHandler, Easing, StyleSheet, Text, View } from 'react-native';
+import {
+  Animated,
+  AppState,
+  BackHandler,
+  Easing,
+  StyleSheet,
+  Text,
+  View,
+  type AppStateStatus,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppButton } from '../components/AppButton';
@@ -10,6 +19,16 @@ import { startRinging, stopRinging } from '../services/alarmAudio';
 import { useAlarmStore } from '../state/AlarmStore';
 import { useTheme } from '../theme/ThemeProvider';
 import { formatMeridiem, formatTime } from '../utils/time';
+
+/**
+ * `AppState.currentState` is `null` until the native module reports in, so the
+ * test is written the safe way round: ring unless the app is *known* to be in
+ * the background. A silent alarm is a far worse failure than a brief overlap
+ * with the notification sound.
+ */
+function isForeground(state: AppStateStatus | null): boolean {
+  return state !== 'background' && state !== 'inactive';
+}
 
 /**
  * Full-screen alarm.
@@ -32,13 +51,37 @@ export function RingingScreen(_props: RootScreenProps<'Ringing'>) {
   const alarm = ringing?.alarm ?? null;
   const canSnooze = (alarm?.snoozeMinutes ?? 0) > 0;
 
-  // Leaving the screen must always silence the device, whatever the reason.
+  /**
+   * Owns the tone and vibration while the app is in the foreground.
+   *
+   * When the alarm fires with the app backgrounded, Android is already playing
+   * the channel sound, so the in-app loop must not start on top of it — it
+   * takes over only once the user actually brings the app forward. Leaving the
+   * screen always silences the device, whatever the reason.
+   */
   useEffect(() => {
     if (!alarm) {
       return;
     }
-    void startRinging(alarm.soundId, alarm.vibrate);
+
+    let ringing = isForeground(AppState.currentState);
+    if (ringing) {
+      void startRinging(alarm.soundId, alarm.vibrate);
+    }
+
+    const subscription = AppState.addEventListener('change', (state) => {
+      const foreground = isForeground(state);
+      if (foreground && !ringing) {
+        ringing = true;
+        void startRinging(alarm.soundId, alarm.vibrate);
+      } else if (!foreground && ringing) {
+        ringing = false;
+        void stopRinging();
+      }
+    });
+
     return () => {
+      subscription.remove();
       void stopRinging();
     };
   }, [alarm]);

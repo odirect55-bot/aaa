@@ -148,7 +148,7 @@ export function AlarmListScreen({ navigation }: RootScreenProps<'AlarmList'>) {
             <EmptyState
               title="No alarms yet"
               message="Create your first alarm and it will ring even if the app is closed."
-              actionLabel="Create alarm"
+              actionLabel="Create your first alarm"
               onAction={() => navigation.navigate('AlarmEdit', {})}
             />
           ) : null
