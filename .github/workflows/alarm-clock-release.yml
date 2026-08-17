@@ -1,0 +1,135 @@
+name: Alarm Clock release
+
+# Builds the production Android artifacts for the Expo app in alarm-clock/.
+#
+# The signed AAB (for Google Play) and a signed universal APK (for sideloading
+# and manual QA) are attached to the run as artifacts.
+#
+# Signing: set these repository secrets. Without them the workflow still builds,
+# but the artifacts are signed with the debug key and are NOT publishable.
+#   ANDROID_KEYSTORE_BASE64   base64 of credentials/upload-keystore.jks
+#   ANDROID_KEYSTORE_PASSWORD
+#   ANDROID_KEY_ALIAS
+#   ANDROID_KEY_PASSWORD
+#
+#   base64 -w0 alarm-clock/credentials/upload-keystore.jks   # to produce the first one
+
+on:
+  push:
+    tags: ["alarm-clock-v*"]
+  workflow_dispatch:
+    inputs:
+      build_type:
+        description: What to build
+        type: choice
+        default: both
+        options: [both, aab, apk]
+
+defaults:
+  run:
+    working-directory: alarm-clock
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      # `secrets` cannot be read from a step-level `if`, so the presence of the
+      # signing material is hoisted into a plain environment variable.
+      HAS_SIGNING_KEY: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: alarm-clock/package-lock.json
+
+      - uses: actions/setup-java@v4
+        with:
+          java-version: "17"
+          distribution: temurin
+
+      - name: Set up the Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: "platform-tools platforms;android-36 build-tools;36.0.0"
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Fail before spending time on a native build if the JS is broken.
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Test
+        run: npm test -- --ci
+
+      - name: Restore the upload keystore
+        if: env.HAS_SIGNING_KEY == 'true'
+        run: |
+          mkdir -p credentials
+          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > credentials/upload-keystore.jks
+          test -s credentials/upload-keystore.jks
+
+      - name: Generate the native project
+        run: npx expo prebuild --platform android --no-install --clean
+
+      - name: Build the app bundle (AAB)
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.build_type != 'apk' }}
+        working-directory: alarm-clock/android
+        env:
+          ORG_GRADLE_PROJECT_ALARMCLOCK_UPLOAD_STORE_FILE: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' && format('{0}/alarm-clock/credentials/upload-keystore.jks', github.workspace) || '' }}
+          ORG_GRADLE_PROJECT_ALARMCLOCK_UPLOAD_STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ORG_GRADLE_PROJECT_ALARMCLOCK_UPLOAD_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ORG_GRADLE_PROJECT_ALARMCLOCK_UPLOAD_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: ./gradlew --no-daemon :app:bundleRelease
+
+      - name: Build the APK
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.build_type != 'aab' }}
+        working-directory: alarm-clock/android
+        env:
+          ORG_GRADLE_PROJECT_ALARMCLOCK_UPLOAD_STORE_FILE: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' && format('{0}/alarm-clock/credentials/upload-keystore.jks', github.workspace) || '' }}
+          ORG_GRADLE_PROJECT_ALARMCLOCK_UPLOAD_STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ORG_GRADLE_PROJECT_ALARMCLOCK_UPLOAD_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ORG_GRADLE_PROJECT_ALARMCLOCK_UPLOAD_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: ./gradlew --no-daemon :app:assembleRelease
+
+      - name: Report what was built
+        run: |
+          echo "### Release artifacts" >> "$GITHUB_STEP_SUMMARY"
+          for artifact in \
+            android/app/build/outputs/bundle/release/*.aab \
+            android/app/build/outputs/apk/release/*.apk; do
+            [ -e "$artifact" ] || continue
+            size=$(du -h "$artifact" | cut -f1)
+            echo "- \`$(basename "$artifact")\` ($size)" >> "$GITHUB_STEP_SUMMARY"
+          done
+          if [ "$HAS_SIGNING_KEY" != "true" ]; then
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "> Signed with the **debug** key — signing secrets are not configured, so these artifacts cannot be published." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload the app bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: alarm-clock-release-aab
+          path: alarm-clock/android/app/build/outputs/bundle/release/*.aab
+          if-no-files-found: ignore
+
+      - name: Upload the APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: alarm-clock-release-apk
+          path: alarm-clock/android/app/build/outputs/apk/release/*.apk
+          if-no-files-found: ignore
+
+      - name: Upload the native build reports on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: alarm-clock-build-reports
+          path: alarm-clock/android/app/build/reports/
+          if-no-files-found: ignore

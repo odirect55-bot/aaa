@@ -2,27 +2,26 @@
   "expo": {
     "name": "Alarm Clock",
     "slug": "alarm-clock",
+    "description": "A reliable alarm clock that rings even when the app is closed.",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "scheme": "alarmclock",
     "userInterfaceStyle": "automatic",
     "backgroundColor": "#0B0B12",
+    "primaryColor": "#6C5CE7",
     "newArchEnabled": true,
-    "splash": {
-      "image": "./assets/splash-icon.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#FFFFFF",
-      "dark": {
-        "backgroundColor": "#0B0B12"
-      }
-    },
+    "assetBundlePatterns": [
+      "assets/**"
+    ],
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.alarmclock.app"
+      "bundleIdentifier": "com.alarmclock.app",
+      "buildNumber": "1"
     },
     "android": {
       "package": "com.alarmclock.app",
+      "versionCode": 1,
       "adaptiveIcon": {
         "backgroundColor": "#6C5CE7",
         "foregroundImage": "./assets/android-icon-foreground.png",
@@ -30,21 +29,38 @@
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false,
+      "allowBackup": true,
       "permissions": [
         "android.permission.POST_NOTIFICATIONS",
-        "android.permission.SCHEDULE_EXACT_ALARM",
         "android.permission.USE_EXACT_ALARM",
+        "android.permission.SCHEDULE_EXACT_ALARM",
         "android.permission.RECEIVE_BOOT_COMPLETED",
         "android.permission.VIBRATE",
-        "android.permission.WAKE_LOCK",
-        "android.permission.TURN_SCREEN_ON",
-        "android.permission.DISABLE_KEYGUARD"
+        "android.permission.WAKE_LOCK"
+      ],
+      "blockedPermissions": [
+        "android.permission.SYSTEM_ALERT_WINDOW",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE"
       ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash-icon.png",
+          "imageWidth": 200,
+          "resizeMode": "contain",
+          "backgroundColor": "#FFFFFF",
+          "dark": {
+            "image": "./assets/splash-icon.png",
+            "backgroundColor": "#0B0B12"
+          }
+        }
+      ],
       [
         "expo-notifications",
         {
@@ -67,7 +83,20 @@
           "enableBackgroundPlayback": false,
           "enableBackgroundRecording": false
         }
-      ]
+      ],
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "minSdkVersion": 26,
+            "enableProguardInReleaseBuilds": true,
+            "enableShrinkResourcesInReleaseBuilds": true,
+            "usesCleartextTraffic": false
+          }
+        }
+      ],
+      "./plugins/withExactAlarmPermissions",
+      "./plugins/withReleaseSigning"
     ]
   }
 }
